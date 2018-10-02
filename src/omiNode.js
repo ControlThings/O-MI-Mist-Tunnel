@@ -10,16 +10,20 @@ function noop() {}
 
 
 function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
-  const mist = new Mist({ name: 'MistApi', corePort: 9094 }); // , coreIp: '127.0.0.1', corePort: 9094
+  var corePort = 9094;
+  if (process.env.CORE) {
+    corePort = parseInt(process.env.CORE);
+  }
+  const mist = new Mist({ name: 'MistApi', corePort: corePort }); // , coreIp: '127.0.0.1', corePort: 9094
 
-  var omiClients = {
+  var omiClients = [
   // remote_peer_id : {
   //   wishPeer: null,       // for sending the o-mi results
   //   ws : null,            // websocket for o-mi communication
   //   sendSuccessCb : null, // callback for notifying about successful o-mi request send (on communication level)
   //   lastContact : Date()  // last contact timestamp for tunnel close timeouts
   // }
-  }; 
+  ]; 
 
   var interval;
   if (omiNodeWsAddress != null) {
@@ -132,6 +136,22 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
     }
   }
 
+  mist.node.addEndpoint('mist', {
+    type: 'string'
+  });
+  mist.node.addEndpoint('mist.name', {
+    type: 'string',
+    read: function(args, peer, cb) {
+      cb(null, "OmiNode tunnel interface");
+    }
+  });
+  mist.node.addEndpoint('mist.class', {
+    type: 'string',
+    read: function(args, peer, cb) {
+      cb(null, "eu.biotope-project.charging-service");
+    }
+  });
+  
   // Receiver for omi messages
   mist.node.addEndpoint('omi', {
     type: 'invoke',
@@ -171,6 +191,8 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       /* By saving the 'peer' object, you can later invoke endpoints on the peer that invoked this endpoint, for example invoke the "omiData" endpoint of the peer to send results of a omi/odf subscription. */
     }
   });
+
+  
 }
 
 
