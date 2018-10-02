@@ -1,6 +1,7 @@
 const Mist = require('mist-api').Mist;
 //const http = require('http');
 const WebSocket = require('ws');
+var BSON = new (require('bson-buffer'))();
 
 
 // TODO: make more controlled system than automatic identity creation
@@ -14,7 +15,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
   if (process.env.CORE) {
     corePort = parseInt(process.env.CORE);
   }
-  const mist = new Mist({ name: 'MistApi', corePort: corePort }); // , coreIp: '127.0.0.1', corePort: 9094
+  const mist = new Mist({ name: 'MistApi', corePort: corePort }); // defaults are: coreIp: '127.0.0.1', corePort: 9094
 
   var omiClients = [
   // remote_peer_id : {
@@ -55,25 +56,96 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
     mist.request('mist.control.invoke', [mistPeer, "omi", stringData], immediateResponseCb);
   }
 
+  function handleFriendRequest(friendRequest) {
+    if (!friendRequest.meta) {
+      console.log("No metadata.");
+      mist.wish.request('identity.friendRequestDecline', [friendRequest.luid, friendRequest.ruid], (err, data) => {
+        if (err) { console.log("identity.friendRequestDecline error", data); return; }
+        console.log("Declined friend request.");
+      });
 
+      return;
+    }
+    /* There is metadata, let's verify signature */
+    mist.wish.request('identity.verify', [friendRequest.meta], (err, data) => {
+      if (err) { console.log("identity.verify error", data); return; }
+
+      if (!data.signatures[0] || !data.signatures[0].sign) {
+        console.log("Bad structure");
+        return;
+      }
+      if (data.signatures[0].sign === true) {
+        console.log("The signature matches!");
+        mist.wish.request('identity.friendRequestAccept', [friendRequest.luid, friendRequest.ruid], (err, data) => {
+          if (err) { console.log("identity.friendRequestAccept error", data); return; }
+          console.log("Accepted friend request.");
+        });
+      }
+      else {
+        console.log("The signature does not match!");
+
+        mist.wish.request('identity.friendRequestDecline', [friendRequest.luid, friendRequest.ruid], (err, data) => {
+          if (err) { console.log("identity.friendRequestDecline error", data); return; }
+          console.log("Declined friend request.");
+        });
+      }
+    });
+    
+  }
+
+  var identityExported = false;
+  function exportContactBase64() {
+    mist.wish.request('identity.list', [], (err, data) => {
+      if (err) { console.log('Error with identity.list when exporting identity base64'); return; }
+
+      if (!data[0] || !data[0].privkey) {
+        return;
+      }
+      var localUid = data[0].uid;
+      mist.wish.request('identity.export', [localUid], (err, data) => {
+        if (identityExported) {
+          return;
+        }
+        console.log("O-MI node's contact exported as base64", BSON.serialize(data).toString('base64'));
+        identityExported = true;
+      });
+    });
+  }
   // wait for wish core
   mist.request('signals', [], (err, data) => {
     console.log(err, data[0]);
 
     if (data[0] && data[0] === 'ready') {
       if (data[1] === true) {
-        setupWishCore(mist); // check own identity or create
+        //setupWishCore(mist); // check own identity or create
+        /* Just export our own identity */
+        exportContactBase64();
       }
+    }
+
+    if (data[0] && data[0] === 'identity') {
+      exportContactBase64();
+    }
+
+    if (data[0] && data[0] === 'friendRequest') {
+      /* The core has received a friend request, and we proceed to check certificate. */
+      mist.wish.request('identity.friendRequestList', [], (err, data) => {
+        if (err) { console.log('friendRrquestList error', data); return; }
+
+        for (var i in data) {
+          handleFriendRequest(data[i]);
+        }
+      });
     }
 
     // Test sending to all peers, TODO: remove
     if (data[0] && data[0] === "peers") {
       mist.request('listPeers', [], (err, data) => {
-        console.log("listPeers:", data);
+        //console.log("listPeers:", data);
 
         for (var i in data) {
           var peer = data[i];
-          sendMistOmi(peer, "<foo/>");
+          //sendMistOmi(peer, "<foo/>");
         }
       });
     }
@@ -222,42 +294,6 @@ function setupWishCore(mist) {
       });
     }
   });
-
-  //mist.wish.request("signals", [], (err, data) => {
-  //    //console.log("Got Wish core signals: ", data);
-
-  //    if (data[0] === "ok") {
-  //        // Clear the local discovery cache so that we may get updates on available peers
-  //        mist.wish.request("wld.clear", [], (err, data) => { if (err)  { console.log("wld.clear err", data);}});
-  //    }
-
-  //    if (data[0] === "localDiscovery") {
-  //        mist.wish.request("wld.list", [], (err, data) => { 
-  //            //console.log("wld:", data);
-  //            for (var i in data) {
-  //                if (data[i] && data[i].claim === true) {
-  //                    var friendCandidate = data[i];
-  //                    mist.wish.request("identity.list", [], (err, data) => {
-  //                        console.log("friend req, identity.list", err, data);
-  //                        var found = false;
-  //                        for (var i in data) {
-  //                            if (data[i].uid.equals(friendCandidate.ruid)) {
-  //                                console.log("Not sending friendreq to ", friendCandidate.alias);
-  //                                found = true;
-  //                            }
-  //                        }
-  //                        if (!found) {
-  //                            mist.wish.request("wld.friendRequest", [localUid, friendCandidate.ruid, friendCandidate.rhid], (err, data) => {
-  //                                console.log("Friend request sent to:", friendCandidate.alias);
-  //                            });
-  //                        }
-  //                    });
-  //                    
-  //                }
-  //            }
-  //        });
-  //    }
-  //});
 }
 
 module.exports = {
