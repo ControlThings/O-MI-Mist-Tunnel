@@ -78,7 +78,10 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
         console.log("The signature matches!");
         mist.wish.request('identity.friendRequestAccept', [friendRequest.luid, friendRequest.ruid], (err, data) => {
           if (err) { console.log("identity.friendRequestAccept error", data); return; }
+          /* TODO: Check that the friend request actually comes from same core as the certificate is issued to */
+          /* TODO: Check that the certificate is actually issued by the registration service. We probably need a way of setting the registration service. */
           console.log("Accepted friend request.");
+
         });
       }
       else {
