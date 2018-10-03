@@ -224,9 +224,14 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
     if (omiClients.hasOwnProperty(peer.userid)) {
       sendOmi(msg, peer, immediateResponseCb);
     } else {
-      createWsConnection(peer).ws.on('open', function open(){
-        sendOmi(msg, peer, immediateResponseCb);
-      });
+      try {
+        createWsConnection(peer).ws.on('open', function open(){
+          sendOmi(msg, peer, immediateResponseCb);
+        });
+      } catch (error) {
+        console.log("Catched error from createWsConnection", error);
+        immediateResponseCb({code: 9998, msg: "createWsConnection failed " + error});
+      }
     }
   }
 
