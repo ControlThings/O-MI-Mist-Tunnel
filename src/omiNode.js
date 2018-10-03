@@ -225,6 +225,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       sendOmi(msg, peer, immediateResponseCb);
     } else {
       try {
+        throw "Connecting to OMI node does not work currently.";
         createWsConnection(peer).ws.on('open', function open(){
           sendOmi(msg, peer, immediateResponseCb);
         });
