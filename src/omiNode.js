@@ -206,25 +206,17 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
   function sendOmi(msg, peer, cb) {
     const client = omiClients[peer.userid];
 
-    var omiTunnelingDisabled = true; //Set this to false if you hae OMI node actually running at the configured host.
-
     //client.sendSuccessCb = cb;
-    if (!omiTunnelingDisabled) { 
-      client.ws.send(msg, function ack(error) {
-        // If error is not defined, the send has been completed, otherwise the error
-        if (error != null) {
-          console.log("[WS] Error:", error);
-          cb({ code: 9999, msg: "WS error:" + error });
-          // TODO: what now?
-        } else {
-          cb(true);
-        }
-      });
-    }
-    else {
-      /* OMI tunneling is disabled, just happily pretend that we sent the OMI message */
-      cb(true);
-    }
+    client.ws.send(msg, function ack(error) {
+      // If error is not defined, the send has been completed, otherwise the error
+      if (error != null) {
+        console.log("[WS] Error:", error);
+        cb({ code: 9999, msg: "WS error:" + error });
+        // TODO: what now?
+      } else {
+        cb(true);
+      }
+    });
   }
 
   // handle omi request at server side
