@@ -76,13 +76,32 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       }
       if (data.signatures[0].sign === true) {
         console.log("The signature matches!");
-        mist.wish.request('identity.friendRequestAccept', [friendRequest.luid, friendRequest.ruid], (err, data) => {
-          if (err) { console.log("identity.friendRequestAccept error", data); return; }
-          /* TODO: Check that the friend request actually comes from same core as the certificate is issued to */
-          /* TODO: Check that the certificate is actually issued by the registration service. We probably need a way of setting the registration service. */
-          console.log("Accepted friend request.");
 
-        });
+        /* Check that the friend request actually comes from same contact as the certificate is issued to.
+        Note that there is a small problem here: because of the certificate's size limit (512 bytes) in current wish-c99, 
+        we had encoded only the uid, and not the full contact data, which would include the pubkey...
+        */
+        if (Buffer.compare(friendRequest.ruid, BSON.deserialize(data.data).issuedTo) === 0) {
+          console.log("Cert is issed to friend requester!");
+          /* Check that the certificate is actually issued by somebody that has 'reg-service' role in our contact db. 
+            This is be done by checking signee uid, and checking that a contact with same uid has identity.permissions.role === 'reg-service'. */
+          var signeeUid = data.signatures[0].uid;
+          mist.wish.request('identity.get', [signeeUid], (err, data) => {
+            if (err) { console.log("identity.get error", data); return; }
+            if (data.permissions && data.permissions.role && data.permissions.role === 'reg-service') {
+              // Yes, it is issed by somebody that has reg service role on the server!
+              console.log("Accepting friend request, as we saw a friend request from somebody with signed certificate from a reg-service!");
+              mist.wish.request('identity.friendRequestAccept', [friendRequest.luid, friendRequest.ruid], (err, data) => {
+                if (err) { console.log("identity.friendRequestAccept error", data); return; }
+                console.log("Accepted friend request.");
+              });
+            }
+          });
+          
+        }
+        else {
+          console.log("Cert is issed to somebody else!");
+        }
       }
       else {
         console.log("The signature does not match!");
@@ -192,7 +211,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       // If error is not defined, the send has been completed, otherwise the error
       if (error != null) {
         console.log("[WS] Error:", error);
-        cb(error);
+        cb({ code: 9999, msg: "WS error:" + error });
         // TODO: what now?
       } else {
         cb(true);
@@ -267,8 +286,33 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
     }
   });
 
-  
+  /** This endpoint is added as a convenience for remote peer. When invoking this the user's contact is removed from service's contact list. */
+  mist.node.addEndpoint("forgetUser", {
+    type: "invoke",
+    invoke: (args, peer, cb) => {
+      mist.wish.request("identity.get", [peer.ruid], (err, data) => {
+        if (err) {
+          console.log("Error listing identitys!", data);
+          cb(data);
+          return;
+        }
+        cb(null, true);
+        var alias = data.alias;
+        mist.wish.request("identity.remove", [peer.ruid], (err, data) => {
+          if (err) {
+            console.log("Error removing identity!", data);
+            cb(data);
+            return;
+          }
+          console.log(alias + "forgotten");
+        });
+        return;
+      });
+    }
+  });
 }
+
+
 
 
 /* This function lists the identities in the Wish core, and if there are no identities, a local identity is created. 
