@@ -307,12 +307,15 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       // cb(null, "OmiNode's omiHandler responding here!");
 
       /* First, get hold of the account id that the Registration service gave to this peer */
-      mist.node.request('identity.get', [peer.ruid], (err, data) => {
+      mist.wish.request('identity.get', [peer.ruid], (err, data) => {
         if (err) { console.log("Error while handling omi invoke, identity.get", data); cb(data); return; }
+
         var accountId = data.meta.accountId;
         console.log("Incoming omi request from peer with accountId", accountId);
+
+        /* Handle the OMI request */
         handleMistOmi(args, peer, cb);
-      })
+      });
       
 
       /* By saving the 'peer' object, you can later invoke endpoints on the peer that invoked this endpoint, for example invoke the "omiData" endpoint of the peer to send results of a omi/odf subscription. */
