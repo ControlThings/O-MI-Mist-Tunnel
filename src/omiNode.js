@@ -75,25 +75,37 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
         return;
       }
       if (data.signatures[0].sign === true) {
-        console.log("The signature matches!");
+        //console.log("The signature matches!");
 
         /* Check that the friend request actually comes from same contact as the certificate is issued to.
         Note that there is a small problem here: because of the certificate's size limit (512 bytes) in current wish-c99, 
         we had encoded only the uid, and not the full contact data, which would include the pubkey...
         */
         if (Buffer.compare(friendRequest.ruid, BSON.deserialize(data.data).issuedTo) === 0) {
-          console.log("Cert is issed to friend requester!");
+          //console.log("Cert is issed to friend requester!");
           /* Check that the certificate is actually issued by somebody that has 'reg-service' role in our contact db. 
             This is be done by checking signee uid, and checking that a contact with same uid has identity.permissions.role === 'reg-service'. */
           var signeeUid = data.signatures[0].uid;
+          var accountId = BSON.deserialize(data.signatures[0].claim).acctId;
           mist.wish.request('identity.get', [signeeUid], (err, data) => {
             if (err) { console.log("identity.get error", data); return; }
             if (data.permissions && data.permissions.role && data.permissions.role === 'reg-service') {
               // Yes, it is issed by somebody that has reg service role on the server!
-              console.log("Accepting friend request, as we saw a friend request from somebody with signed certificate from a reg-service!");
+              console.log("Accepting friend request with valid certificate, acccount id", accountId);
               mist.wish.request('identity.friendRequestAccept', [friendRequest.luid, friendRequest.ruid], (err, data) => {
                 if (err) { console.log("identity.friendRequestAccept error", data); return; }
-                console.log("Accepted friend request.");
+                //console.log("Accepted friend request.");
+                /* Put "connect: false" meta attribute for the new identity, 
+                this is to indicate that Reg service should not try to connect to this peer automatically */
+                mist.wish.request("identity.update",[ friendReq.luid, { connect: false } ], (err, data) => {
+                  if (err) { console.log("Identity update error", data); return;}
+
+                });
+                /* Save the account id as contact metadata, this might be useful later when OMI requests are handled  */
+                mist.wish.request("identity.meta",[ friendReq.luid, { accountId: accountId } ], (err, data) => {
+                  if (err) { console.log("Identity update error", data); return;}
+
+                });
               });
             }
           });
@@ -133,11 +145,12 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       });
     });
   }
-  // wait for wish core
+  
+  /* Start listening to events ("signals") from Wish core */
   mist.request('signals', [], (err, data) => {
-    console.log(err, data[0]);
 
     if (data[0] && data[0] === 'ready') {
+      /* The 'ready' signal with parameter true is emitted by core when it is ready to accept commands from us */
       if (data[1] === true) {
         //setupWishCore(mist); // check own identity or create
         /* Just export our own identity */
@@ -145,10 +158,12 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       }
     }
 
+    /* The 'identity' signal is emitted when there is a change in the core's database of identities and contacts */
     if (data[0] && data[0] === 'identity') {
       exportContactBase64();
     }
 
+    /* The 'friendRequest' signal is emitted when a previously unknown identity tries to form a trust relationship with our core */
     if (data[0] && data[0] === 'friendRequest') {
       /* The core has received a friend request, and we proceed to check certificate. */
       mist.wish.request('identity.friendRequestList', [], (err, data) => {
@@ -160,7 +175,8 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       });
     }
 
-    // Test sending to all peers, TODO: remove
+    /* The 'peers' signal is emitted when a change happens in the list of peers (remote Mist applications) changes. This happens for example when a remote
+    user contacts us, or disconnectes from us. */
     if (data[0] && data[0] === "peers") {
       mist.request('listPeers', [], (err, data) => {
         //console.log("listPeers:", data);
@@ -179,8 +195,8 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
 
   function createWsConnection(wishPeer) {
     const userid = wishPeer.userid; //createWishUserId(wishPeer);
-    console.log("peer:", wishPeer);
-    console.log("BASE64 REMOTE USERID: ", userid);
+    //console.log("peer:", wishPeer);
+    //console.log("BASE64 REMOTE USERID: ", userid);
 
     const ws = new WebSocket(omiNodeWsAddress, {
         perMessageDeflate: false,
@@ -225,7 +241,8 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       sendOmi(msg, peer, immediateResponseCb);
     } else {
       try {
-        throw "Connecting to OMI node does not work currently.";
+        /* FIXME: handle situation when  Omi node is not running and ws connection fails */
+        throw "Connecting to OMI node is currently disabled on purpose.";
         createWsConnection(peer).ws.on('open', function open(){
           sendOmi(msg, peer, immediateResponseCb);
         });
@@ -239,12 +256,14 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
   mist.node.addEndpoint('mist', {
     type: 'string'
   });
+
   mist.node.addEndpoint('mist.name', {
     type: 'string',
     read: function(args, peer, cb) {
       cb(null, "OmiNode tunnel interface");
     }
   });
+  
   mist.node.addEndpoint('mist.class', {
     type: 'string',
     read: function(args, peer, cb) {
@@ -286,7 +305,15 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       //post_req.end();
 
       // cb(null, "OmiNode's omiHandler responding here!");
-      handleMistOmi(args, peer, cb);
+
+      /* First, get hold of the account id that the Registration service gave to this peer */
+      mist.node.request('identity.get', [peer.ruid], (err, data) => {
+        if (err) { console.log("Error while handling omi invoke, identity.get", data); cb(data); return; }
+        var accountId = data.meta.accountId;
+        console.log("Incoming omi request from peer with accountId", accountId);
+        handleMistOmi(args, peer, cb);
+      })
+      
 
       /* By saving the 'peer' object, you can later invoke endpoints on the peer that invoked this endpoint, for example invoke the "omiData" endpoint of the peer to send results of a omi/odf subscription. */
     }
