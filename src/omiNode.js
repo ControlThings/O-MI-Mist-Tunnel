@@ -9,6 +9,9 @@ const DefaultIdentityName = 'o-mi-node';    // wish/mist identity name
 
 function noop() {}
 
+function getTimestamp() {
+  return new Date().toISOString();
+}
 
 function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
   var corePort = 9094;
@@ -58,7 +61,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
 
   function handleFriendRequest(friendRequest) {
     if (!friendRequest.meta) {
-      console.log("No metadata.");
+      console.log(getTimestamp(), "No metadata in friend request.");
       mist.wish.request('identity.friendRequestDecline', [friendRequest.luid, friendRequest.ruid], (err, data) => {
         if (err) { console.log("identity.friendRequestDecline error", data); return; }
         console.log("Declined friend request.");
@@ -71,7 +74,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       if (err) { console.log("identity.verify error", data); return; }
 
       if (!data.signatures[0] || !data.signatures[0].sign) {
-        console.log("Bad structure");
+        console.log(getTimestamp(), "Bad structure in certificate");
         return;
       }
       if (data.signatures[0].sign === true) {
@@ -91,7 +94,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
             if (err) { console.log("identity.get error", data); return; }
             if (data.permissions && data.permissions.role && data.permissions.role === 'reg-service') {
               // Yes, it is issed by somebody that has reg service role on the server!
-              console.log("Accepting friend request with valid certificate, acccount id", accountId);
+              console.log(getTimestamp(), "Accepting friend request with valid certificate, acccount id", accountId);
               mist.wish.request('identity.friendRequestAccept', [friendRequest.luid, friendRequest.ruid], (err, data) => {
                 if (err) { console.log("identity.friendRequestAccept error", data); return; }
                 //console.log("Accepted friend request.");
@@ -112,11 +115,11 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
           
         }
         else {
-          console.log("Cert is issed to somebody else!");
+          console.log(getTimestamp(), "Cert is issed to somebody else!");
         }
       }
       else {
-        console.log("The signature does not match!");
+        console.log(getTimestamp(), "The signature does not match!");
 
         mist.wish.request('identity.friendRequestDecline', [friendRequest.luid, friendRequest.ruid], (err, data) => {
           if (err) { console.log("identity.friendRequestDecline error", data); return; }
@@ -311,7 +314,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
         if (err) { console.log("Error while handling omi invoke, identity.get", data); cb(data); return; }
 
         var accountId = data.meta.accountId;
-        console.log("Incoming omi request from peer with accountId", accountId);
+        console.log(getTimestamp(), "Incoming omi request from peer with accountId", accountId);
 
         /* Handle the OMI request */
         handleMistOmi(args, peer, cb);
@@ -340,7 +343,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
             cb(data);
             return;
           }
-          console.log(alias + "forgotten");
+          console.log(getTimestamp(), alias + "forgotten");
         });
         return;
       });
