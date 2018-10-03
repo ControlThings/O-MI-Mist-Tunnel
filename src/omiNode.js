@@ -102,8 +102,8 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
 
                 });
                 /* Save the account id as contact metadata, this might be useful later when OMI requests are handled  */
-                mist.wish.request("identity.meta",[ friendRequest.ruid, { accountId: accountId } ], (err, data) => {
-                  if (err) { console.log("Identity update error", data); return;}
+                mist.wish.request("identity.update",[ friendRequest.ruid, { accountId: accountId } ], (err, data) => {
+                  if (err) { console.log("Identity update error when putting accountId", data); return;}
 
                 });
               });
