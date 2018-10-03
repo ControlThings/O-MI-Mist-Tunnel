@@ -97,12 +97,12 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
                 //console.log("Accepted friend request.");
                 /* Put "connect: false" meta attribute for the new identity, 
                 this is to indicate that Reg service should not try to connect to this peer automatically */
-                mist.wish.request("identity.update",[ friendReq.luid, { connect: false } ], (err, data) => {
+                mist.wish.request("identity.update",[ friendRequest.ruid, { connect: false } ], (err, data) => {
                   if (err) { console.log("Identity update error", data); return;}
 
                 });
                 /* Save the account id as contact metadata, this might be useful later when OMI requests are handled  */
-                mist.wish.request("identity.meta",[ friendReq.luid, { accountId: accountId } ], (err, data) => {
+                mist.wish.request("identity.meta",[ friendRequest.ruid, { accountId: accountId } ], (err, data) => {
                   if (err) { console.log("Identity update error", data); return;}
 
                 });
@@ -263,7 +263,7 @@ function OmiNodeTunnel(omiNodeWsAddress, tunnelCloseTimeout=1*24*60*60*1000) {
       cb(null, "OmiNode tunnel interface");
     }
   });
-  
+
   mist.node.addEndpoint('mist.class', {
     type: 'string',
     read: function(args, peer, cb) {
